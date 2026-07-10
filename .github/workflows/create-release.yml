@@ -1,10 +1,12 @@
 name: Create GitHub Release from Tag
 
-# Trigger: annotated tag pushed (vX.Y.Z)
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag in semver format, e.g. v3.2.12
+        required: true
+        type: string
 
 jobs:
   release:
@@ -17,20 +19,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build concise release notes
-        id: release_notes
+      - name: Resolve release tag
+        id: resolve_tag
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          git fetch --tags --force
+          git rev-parse "${RELEASE_TAG}" >/dev/null
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build concise release notes
+        env:
+          RELEASE_TAG: ${{ steps.resolve_tag.outputs.tag }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          git checkout "${RELEASE_TAG}"
           python .github/scripts/build_release_notes.py /tmp/release_body.md
-          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.release_notes.outputs.tag }}
-          name: ${{ steps.release_notes.outputs.tag }}
+          tag_name: ${{ steps.resolve_tag.outputs.tag }}
+          name: ${{ steps.resolve_tag.outputs.tag }}
           body_path: /tmp/release_body.md
           draft: false
           prerelease: false
